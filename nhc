@@ -614,20 +614,23 @@ function nhcmain_detach() {
 
 function nhcmain_run_checks() {
     CHECKS=( )
+    CHECKS_NAME=( )
     nhc_load_conf "$CONFFILE"
-    for ((CNUM=0; CNUM<${#CHECKS[*]}; CNUM++)); do
+    local CHECKS_TOTAL=${#CHECKS[*]}
+    for ((CNUM=0; CNUM<${CHECKS_TOTAL}; CNUM++)); do
         CHECK="${CHECKS[$CNUM]}"
+        CHECK_NAME="${CHECKS[$CNUM]}"
         CHECK_DIED=0
 
         # Run the check.
         if [[ "$NHC_CHECK_FORKED" == 0 ]] || mcheck "$CHECK" '/( |^)(export )?[A-Za-z_][A-Za-z0-9_]*=[^ =]/'; then
-            vlog "Running check:  \"$CHECK\""
+            vlog "Running check ($((CNUM+1))/${CHECKS_TOTAL}):  \"${CHECK_NAME:-$CHECK}\""
             eval $CHECK
             RET=$?
         else
             # Run the check in a separate forked process.
             eval $CHECK &
-            vlog "Running check:  \"$CHECK\" (forked PID $!)"
+            vlog "Running check ($((CNUM+1))/${CHECKS_TOTAL}):  \"${CHECK_NAME:-$CHECK}\" (forked PID $!)"
             wait $! >/dev/null 2>&1
             RET=$?
         fi

@@ -361,13 +361,14 @@ function mcheck() {
 function nhc_load_conf() {
     local CONFFILE="$1"
     local WS=$' \t'
-    local LINE TARGET CHECK
+    local LINE TARGET CHECK NAME
 
     # Load configuration file and match lines to current hostname.
     dbg "Loading configuration from $CONFFILE."
     while read LINE ; do
         TARGET="${LINE%%||*}"
         CHECK="${LINE#*||}"
+        NAME=""
 
         # Trim whitespace.
         while [[ "${TARGET##[$WS]}" != "${TARGET%%[$WS]}" ]]; do
@@ -388,8 +389,21 @@ function nhc_load_conf() {
         elif mcheck "$HOSTNAME" "$TARGET"; then
             # Node's hostname matches target string.
             dbg "Host match check:  \"${HOSTNAME}\" matches \"${TARGET}\" for check:  $CHECK"
+
+            # If the check begins with {...} block, save it as a name
+            if [[ "${CHECK:0:1}" == "{" ]]; then
+                NAME="${CHECK%%\}*}"
+                NAME="${NAME:1}" # Remove leading curly bracket
+                CHECK="${CHECK#*\}}"
+                # Remove whitespace again
+                while [[ "${CHECK##[$WS]}" != "${CHECK%%[$WS]}" ]]; do
+                    CHECK="${CHECK##[$WS]}"
+                done
+            fi
+
             # Add the check to our list.
             CHECKS[${#CHECKS[*]}]="$CHECK"
+            CHECKS_NAME[${#CHECKS_NAME[*]}]="$NAME"
         else
             # Host does not match target.  Continue to the next line.
             dbg "Host match check:  \"${HOSTNAME}\" failed to match \"${TARGET}\" for check:  $CHECK"
