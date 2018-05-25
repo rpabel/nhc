@@ -1,0 +1,218 @@
+# RRZK NHC - Filesystem IO Checks
+#
+# Roland Pabel <pabel@uni-koeln.de>
+# 17 Nov 2017
+#
+
+LS_CMD="${LS_CMD:-'/usr/bin/ls'}"
+LS_ARGS="${LS_ARGS:--l}"
+
+DD_CMD="${DD_CMD:-'/bin/dd'}"
+DD_ARGS="${DD_ARGS:-'status=none'}"
+
+# Check that a directory is browseable and contains something
+# Options: -d <directory>
+# [ -t <timeout> command timeout, default: 30s ]
+# [ -l <linus> min lines to expect, default: 3 ]
+function check_io_ls() {
+    local DIR="" CMD_TIMEOUT=30 MIN_LINES=3
+    local RET OUTPUT=""
+    OPTIND=1
+    while getopts ":d:" OPTION ; do
+        case "$OPTION" in
+            d) DIR="$OPTARG" ;;
+            t) CMD_TIMEOUT="$OPTARG" ;;
+            l) MIN_LINES="$OPTARG" ;;
+            *) die 1 "$FUNCNAME:  Syntax error:  Invalid/unsupported operator \"-$OPTION\"." ; return 1 ;;
+        esac
+    done
+    # Check arguments
+    if [[ -z "$DIR" ]]; then
+        die 1 "$FUNCNAME:  Syntax error:  Directory (-d) required."
+        return 1
+    fi
+    if [[ -n "$CMD_TIMEOUT" && $CMD_TIMEOUT -gt $TIMEOUT ]]; then
+        die 1 "$CHECKNAME:  Command timeout $CMD_TIMEOUT exceeds NHC timeout $TIMEOUT"
+        return 1
+    fi
+    # check dir exists
+    if [[ ! -d "$DIR" ]]; then
+        die 1 "$FUNCNAME:  Error:  Something named $DIR already exists, but it is not a directory."
+        return 1
+    fi
+    # check dir is browseable
+    if [[ ! -r "$DIR" ]]; then
+        die 1 "$FUNCNAME:  Error:  Directory $DIR is not readable."
+        return 1
+    fi
+    # run ls
+    CMD_LIST=( "$LS_CMD" "$LS_ARGS" "$DIR" )
+    IFS=$'\n'
+    OUTPUT=( $(nhc_cmd_with_timeout "$CMD_TIMEOUT" "${CMD_LIST[@]}") )
+    RET=$?
+    IFS=$' \t\n'
+    # parse output
+    if [[ $RET -ne 0 ]]; then
+        die 1 "$FUNCNAME:  Error reading $DIR. Aborting."
+        return 1
+    else
+        if [[ "${#OUTPUT[@]}" -lt "$MIN_LINES" ]]; then
+            die 1 "$FUNCNAME:  Output contains only ${#OUTPUT[@]} lines, expected at least $MIN_LINES. Error."
+            return 1
+        fi
+    fi
+    # success
+    return 0
+}
+
+# Check that a file can be read completely
+# Options: -f <filename>
+# [ -b <block size> default: 1MB ]
+# [ -t <timeout> command timeout, default: 30s ]
+function check_io_file_ro() {
+    local FILE="" CMD_TIMEOUT=30 BS="1M"
+    local RET
+    OPTIND=1
+    while getopts ":f:b:t:" OPTION ; do
+        case "$OPTION" in
+            f) FILE="$OPTARG" ;;
+            b) BS="$OPTARG" ;;
+            t) CMD_TIMEOUT="$OPTARG" ;;
+            *) die 1 "$FUNCNAME:  Syntax error:  Invalid/unsupported operator \"-$OPTION\"." ; return 1 ;;
+        esac
+    done
+    # Check arguments
+    if [[ -z "$FILENAME" ]]; then
+        die 1 "$FUNCNAME:  Syntax error:  Filename (-f) required."
+        return 1
+    fi
+    if [[ -n "$CMD_TIMEOUT" && $CMD_TIMEOUT -gt $TIMEOUT ]]; then
+        die 1 "$FUNCNAME:  Command timeout $CMD_TIMEOUT exceeds NHC timeout $TIMEOUT"
+        return 1
+    fi
+    # check file exists and is a file
+    if [[ ! -f "$FILE" ]]; then
+        die 1 "$FUNCNAME:  Error:  Something named $FILE already exists, but it is not a regular file."
+        return 1
+    fi
+    # check file is readable
+    if [[ ! -r "$FILE" ]]; then
+        die 1 "$FUNCNAME:  Error:  File $FILE is not readable."
+        return 1
+    fi
+    # read from file
+    CMD_LIST=( "$DD_CMD" "if=$FILE" "of=/dev/null" "bs=$BS" )
+    nhc_cmd_with_timeout "$CMD_TIMEOUT" "${CMD_LIST[@]}"
+    RET=$?
+    if [[ $RET -ne 0 ]]; then
+        die 1 "$FUNCNAME:  Error reading from $FILE. Aborting."
+        return 1
+    fi
+    # success
+    return 0
+}
+
+# Check that we can write to a file and read it back
+# check_io_file_rw
+# -f <filename>
+# -c <count> count of blocks to write/read
+# [ -i (ignore existing file), default: false ]
+# [ -d <path> input to read data from, default: /dev/zero ]
+# [ -b <block size>, default: 1MB ]
+# [ -t <timeout> command timeout, default: 30s ]
+# [ -k (keep) do not delete file ]
+function check_io_file_rw() {
+    local FILE="" COUNT="" IGNORE_EXISTING="false" IDEV="/dev/zero" BS="1M"
+    local REMOVE="true" CMD_TIMEOUT=30
+    local -a CMD_LIST
+    local RET
+    OPTIND=1
+    while getopts ":f:c:id:b:t:k" OPTION ; do
+        case "$OPTION" in
+            f) FILE="$OPTARG" ;;
+            c) COUNT="$OPTARG" ;;
+            i) IGNORE_EXISTING="true" ;;
+            d) IDEV="$OPTARG" ;;
+            b) BS="$OPTARG" ;;
+            t) CMD_TIMEOUT="$OPTARG" ;;
+            k) REMOVE="false" ;;
+            :) die 1 "$FUNCNAME:  Option -$OPTARG requires an argument." ; return 1 ;;
+            \?) die 1 "$FUNCNAME:  Invalid option:  -$OPTARG" ; return 1 ;;
+        esac
+    done
+    # Check arguments
+    if [[ -z "$FILE" ]]; then
+        die 1 "$FUNCNAME:  Syntax error:  Filename (-f) required."
+        return 1
+    fi
+    if [[ -z "$COUNT" ]]; then
+        die 1 "$FUNCNAME:  Syntax error:  Count (-c) required."
+        return 1
+    fi
+    if [[ -n "$CMD_TIMEOUT" && $CMD_TIMEOUT -gt $TIMEOUT ]]; then
+        die 1 "$FUNCNAME:  Command timeout $CMD_TIMEOUT exceeds NHC timeout $TIMEOUT"
+        return 1
+    fi
+    # Check directory exists
+    DIR=${FILE%/*}
+    test -z "$DIR" && DIR="/"   # if empty, assume root directory
+    if [[ ! -d "$DIR" ]]; then
+        die 1 "$FUNCNAME:  Error:  Directory $DIR of file $FILE does not exist."
+        return 1
+    fi
+    # if something named exactly as our file exists, abort
+    if [[ -e "$FILE" ]] && [[ ! -f "$FILE" ]]; then
+        die 1 "$FUNCNAME:  Error:  Something named $FILE already exists, but it is not a regular file."
+        return 1
+    fi
+    # create file, if it does not exist yet
+    if [[ -f "$FILE" ]]; then
+        # abort if file exists and IGNORE_EXISTING is false
+        if [[ "$IGNORE_EXISTING" != "true" ]]; then
+            die 1 "$FUNCNAME:  Error:  File $FILE already exists, but can not ignore it."
+            return 1
+        fi
+        # file exists, check that I have permissions to change it
+        if [[ ! -w "$FILE" ]] || [[ ! -r "$FILE" ]]; then
+            die 1 "$FUNCNAME:  Error:  File $FILE already exists, but can not read/write it."
+            return 1
+        fi
+    else
+        # create file
+        touch "$FILE"
+        RET=$?
+        if [[ "$?" -ne "0" ]]; then
+            die 1 "$FUNCNAME:  Error:  Creation of File $FILE failed."
+            return 1
+        fi
+    fi
+    # write to file
+    CMD_LIST=( "$DD_CMD" "if=$IDEV" "of=$FILE" "bs=$BS" "count=$COUNT" "$DD_ARGS" )
+    nhc_cmd_with_timeout "$CMD_TIMEOUT" "${CMD_LIST[@]}"
+    RET=$?
+    if [[ $RET -ne 0 ]]; then
+        die 1 "$FUNCNAME:  Error writing to $FILE. Aborting."
+        return 1
+    fi
+    # read from file
+    CMD_LIST=( "$DD_CMD" "if=$FILE" "of=/dev/null" "bs=$BS" "$DD_ARGS" )
+    nhc_cmd_with_timeout "$CMD_TIMEOUT" "${CMD_LIST[@]}"
+    RET=$?
+    if [[ $RET -ne 0 ]]; then
+        die 1 "$FUNCNAME:  Error reading from $FILE. Aborting."
+        return 1
+    fi
+    # remove it
+    if [[ $REMOVE == "true" ]]; then
+        CMD_LIST=( "rm" "-f" "$FILE" )
+        nhc_cmd_with_timeout "$CMD_TIMEOUT" "${CMD_LIST[@]}"
+        RET=$?
+        if [[ $RET -ne 0 ]]; then
+            die 1 "$FUNCNAME:  Error removing $FILE. Aborting."
+            return 1
+        fi
+    fi
+    # success
+    return 0
+}
+
