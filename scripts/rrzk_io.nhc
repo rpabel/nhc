@@ -4,17 +4,19 @@
 # 17 Nov 2017
 #
 
-LS_CMD="${LS_CMD:-'/usr/bin/ls'}"
-LS_ARGS="${LS_ARGS:--l}"
+export DEFAULT_LS_CMD="ls"
+export DEFAULT_LS_ARGS="-l"
 
-DD_CMD="${DD_CMD:-'/bin/dd'}"
-DD_ARGS="${DD_ARGS:-'status=none'}"
+export DEFAULT_DD_CMD="dd"
+export DEFAULT_DD_ARGS="status=none"
 
 # Check that a directory is browseable and contains something
 # Options: -d <directory>
 # [ -t <timeout> command timeout, default: 30s ]
 # [ -l <linus> min lines to expect, default: 3 ]
 function check_io_ls() {
+    local LS_CMD="${LS_CMD:-$DEFAULT_LS_CMD}"
+    local LS_ARGS="${LS_ARGS:-$DEFAULT_LS_ARGS}"
     local DIR="" CMD_TIMEOUT=30 MIN_LINES=3
     local RET OUTPUT=""
     OPTIND=1
@@ -70,6 +72,9 @@ function check_io_ls() {
 # [ -b <block size> default: 1MB ]
 # [ -t <timeout> command timeout, default: 30s ]
 function check_io_file_ro() {
+    local DD_CMD="${DD_CMD:-$DEFAULT_DD_CMD}"
+    local DD_ARGS="${DD_ARGS:-$DEFAULT_DD_ARGS}"
+    local DD_ARGS_ARRAY=($DD_ARGS) # split into separate words
     local FILE="" CMD_TIMEOUT=30 BS="1M"
     local RET
     OPTIND=1
@@ -101,7 +106,7 @@ function check_io_file_ro() {
         return 1
     fi
     # read from file
-    CMD_LIST=( "$DD_CMD" "if=$FILE" "of=/dev/null" "bs=$BS" )
+    CMD_LIST=( "$DD_CMD" "if=$FILE" "of=/dev/null" "bs=$BS" "${DD_ARGS_ARRAY[@]}")
     nhc_cmd_with_timeout "$CMD_TIMEOUT" "${CMD_LIST[@]}"
     RET=$?
     if [[ $RET -ne 0 ]]; then
@@ -122,6 +127,9 @@ function check_io_file_ro() {
 # [ -t <timeout> command timeout, default: 30s ]
 # [ -k (keep) do not delete file ]
 function check_io_file_rw() {
+    local DD_CMD="${DD_CMD:-$DEFAULT_DD_CMD}"
+    local DD_ARGS="${DD_ARGS:-$DEFAULT_DD_ARGS}"
+    local DD_ARGS_ARRAY=($DD_ARGS) # split into separate words
     local FILE="" COUNT="" IGNORE_EXISTING="false" IDEV="/dev/zero" BS="1M"
     local REMOVE="true" CMD_TIMEOUT=30
     local -a CMD_LIST
@@ -187,7 +195,7 @@ function check_io_file_rw() {
         fi
     fi
     # write to file
-    CMD_LIST=( "$DD_CMD" "if=$IDEV" "of=$FILE" "bs=$BS" "count=$COUNT" "$DD_ARGS" )
+    CMD_LIST=( "$DD_CMD" "if=$IDEV" "of=$FILE" "bs=$BS" "count=$COUNT" "${DD_ARGS_ARRAY[@]}" )
     nhc_cmd_with_timeout "$CMD_TIMEOUT" "${CMD_LIST[@]}"
     RET=$?
     if [[ $RET -ne 0 ]]; then
@@ -195,7 +203,7 @@ function check_io_file_rw() {
         return 1
     fi
     # read from file
-    CMD_LIST=( "$DD_CMD" "if=$FILE" "of=/dev/null" "bs=$BS" "$DD_ARGS" )
+    CMD_LIST=( "$DD_CMD" "if=$FILE" "of=/dev/null" "bs=$BS" "${DD_ARGS_ARRAY[@]}" )
     nhc_cmd_with_timeout "$CMD_TIMEOUT" "${CMD_LIST[@]}"
     RET=$?
     if [[ $RET -ne 0 ]]; then
