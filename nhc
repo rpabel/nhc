@@ -619,7 +619,7 @@ function nhcmain_run_checks() {
     local CHECKS_TOTAL=${#CHECKS[*]}
     for ((CNUM=0; CNUM<${CHECKS_TOTAL}; CNUM++)); do
         CHECK="${CHECKS[$CNUM]}"
-        CHECK_NAME="${CHECKS[$CNUM]}"
+        CHECK_NAME="${NAME[$CNUM]}"
         CHECK_DIED=0
 
         # Run the check.
