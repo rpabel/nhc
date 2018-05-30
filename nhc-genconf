@@ -248,7 +248,12 @@ function nhcgc_gen_config() {
             IFS=$' \t\n'
             for ((i=0; i<${#LINES[*]}; i++)); do
                 if mcheck "${LINES[$i]}" "$DMI_MATCH"; then
-                    echo "# $HOSTNAME || check_dmi_data_match -h $HANDLE ${DMI_TYPE_IDS[$HANDLE]:+-t ${DMI_TYPE_IDS[$HANDLE]}} \"${LINES[i]}\""
+                    if [[ "${LINES[$i]}" == *"  "* ]]; then
+                        ESCAPED=$(echo "${LINES[i]}" | sed 's/\([ ]\)/\\\\\1/g')
+                        echo "# $HOSTNAME || check_dmi_data_match -h $HANDLE ${DMI_TYPE_IDS[$HANDLE]:+-t ${DMI_TYPE_IDS[$HANDLE]}} \"${ESCAPED}\""
+                    else
+                        echo "# $HOSTNAME || check_dmi_data_match -h $HANDLE ${DMI_TYPE_IDS[$HANDLE]:+-t ${DMI_TYPE_IDS[$HANDLE]}} \"${LINES[i]}\""
+                    fi
                 fi
             done
         done
